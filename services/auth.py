@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import jwt
+import jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -39,7 +39,7 @@ def decode_access_token(token: str) -> dict:
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.JWTError:
+    except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

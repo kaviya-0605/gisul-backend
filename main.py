@@ -21,6 +21,9 @@ Design decisions:
 
 import logging
 import os
+
+print("STEP 1 - main.py started")
+
 from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Optional
@@ -29,6 +32,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
+
+print("STEP 2 - basic imports loaded")
 
 load_dotenv()
 
@@ -40,22 +45,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Service imports (no heavy work happens here — all lazy) ───────────────────
+print("STEP 2.1 - loading similarity service")
 from services.similarity import find_similar
+print("Similarity service initialized")
+
+print("STEP 2.2 - loading topic classifier")
 from services.topic_classifier import get_topic
+print("Topic classifier initialized")
+
+print("STEP 2.3 - loading database")
 from database.mongodb import collection, users_collection
+print("MongoDB initialized")
+
+print("STEP 2.4 - loading auth service")
 from services.auth import (
     get_password_hash,
     verify_password,
     create_access_token,
     get_current_user,
 )
+print("Auth service initialized")
 
 # ── FastAPI app ────────────────────────────────────────────────────────────────
+print("STEP 3 - creating FastAPI")
 app = FastAPI(
     title="StudySync AI",
     description="Semantic question similarity search backend with JWT auth",
     version="1.1.0",
 )
+print("STEP 4 - FastAPI created")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 _raw_origins = os.getenv(
@@ -73,7 +91,7 @@ app.add_middleware(
 )
 
 logger.info("CORS origins: %s", origins)
-
+print("Application startup complete")
 
 # ── Request schemas ────────────────────────────────────────────────────────────
 class QuestionRequest(BaseModel):
