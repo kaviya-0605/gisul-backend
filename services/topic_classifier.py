@@ -88,13 +88,9 @@
 
 
 
-from sentence_transformers import SentenceTransformer
+from services.model_loader import model
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
-
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
-)
 
 TOPICS = {
     "Biology":

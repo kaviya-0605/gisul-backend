@@ -8,10 +8,11 @@ __pycache__/
 dist/
 build/
 
-# Virtual environment
+# Virtual environment & dependencies
 venv/
 .venv/
 env/
+node_modules/
 
 # Environment variables (never commit secrets)
 .env
@@ -25,4 +26,5 @@ env/
 .vscode/
 
 # Large data / model cache
-data/embeddings.npy
+# data/embeddings.npy is included for seamless deployment
+

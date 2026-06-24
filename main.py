@@ -326,11 +326,9 @@ from pydantic import BaseModel
 from datetime import datetime
 from collections import Counter, defaultdict
 
-from sentence_transformers import SentenceTransformer
-
+from services.model_loader import model
 from services.similarity import find_similar
 from services.topic_classifier import get_topic
-
 from database.mongodb import collection
 
 app = FastAPI()
@@ -339,8 +337,6 @@ app = FastAPI()
 # CORS
 # =====================================================
 
-# Set ALLOWED_ORIGINS in .env as a comma-separated list of frontend URLs.
-# e.g. ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:5173
 _raw_origins = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173"
@@ -353,14 +349,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# =====================================================
-# LOAD MODEL
-# =====================================================
-
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2"
 )
 
 # =====================================================
