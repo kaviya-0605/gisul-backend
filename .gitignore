@@ -31,3 +31,4 @@ node_modules/
 # ONNX model cache — downloaded at build time via build.sh, not committed to git
 models/
 
+data/embeddings.bin

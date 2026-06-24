@@ -14,5 +14,6 @@ client = MongoClient(MONGO_URI)
 db = client["gisul"]
 
 collection = db["search"]
+users_collection = db["users"]
 
 print("MongoDB Connected Successfully")

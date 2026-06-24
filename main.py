@@ -2,6 +2,8 @@
 StudySync AI — FastAPI Backend
 ================================
 Endpoints:
+  POST /signup       — register a new user
+  POST /login        — log in and receive JWT token
   POST /ask          — find semantically similar questions
   GET  /history      — all past questions (newest first)
   GET  /dashboard    — aggregate stats
@@ -14,17 +16,19 @@ Design decisions:
   • All ML operations are wrapped in try/except — the API never crashes
     due to embedding failures; it returns a 500 with a clear message.
   • MongoDB _id (ObjectId) is serialised to str for JSON compatibility.
+  • JWT Authentication isolates data per user.
 """
 
 import logging
 import os
 from collections import Counter, defaultdict
 from datetime import datetime
+from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 load_dotenv()
 
@@ -38,18 +42,22 @@ logger = logging.getLogger(__name__)
 # ── Service imports (no heavy work happens here — all lazy) ───────────────────
 from services.similarity import find_similar
 from services.topic_classifier import get_topic
-from database.mongodb import collection
+from database.mongodb import collection, users_collection
+from services.auth import (
+    get_password_hash,
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
 
 # ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="StudySync AI",
-    description="Semantic question similarity search backend",
-    version="1.0.0",
+    description="Semantic question similarity search backend with JWT auth",
+    version="1.1.0",
 )
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
-# Set ALLOWED_ORIGINS in your .env / Render environment variables as a
-# comma-separated list:  https://gisul-frontend-eight.vercel.app,http://localhost:5173
 _raw_origins = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173",
@@ -67,9 +75,18 @@ app.add_middleware(
 logger.info("CORS origins: %s", origins)
 
 
-# ── Request schema ─────────────────────────────────────────────────────────────
+# ── Request schemas ────────────────────────────────────────────────────────────
 class QuestionRequest(BaseModel):
     question: str
+
+class UserSignup(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -80,20 +97,56 @@ def _safe_score(item: dict) -> float:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ENDPOINTS
+# AUTHENTICATION ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/signup", status_code=status.HTTP_201_CREATED)
+def signup(user: UserSignup):
+    if users_collection.find_one({"email": user.email}):
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    hashed_password = get_password_hash(user.password)
+    user_dict = {
+        "name": user.name,
+        "email": user.email,
+        "hashed_password": hashed_password,
+        "createdAt": datetime.utcnow()
+    }
+    
+    result = users_collection.insert_one(user_dict)
+    
+    access_token = create_access_token(data={"sub": str(result.inserted_id)})
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {"name": user.name, "email": user.email}
+    }
+
+
+@app.post("/login")
+def login(user: UserLogin):
+    db_user = users_collection.find_one({"email": user.email})
+    if not db_user or not verify_password(user.password, db_user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+        
+    access_token = create_access_token(data={"sub": str(db_user["_id"])})
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {"name": db_user["name"], "email": db_user["email"]}
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DATA ENDPOINTS (PROTECTED)
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/ask")
-def ask_question(data: QuestionRequest):
-    """
-    Accept a study question, classify its topic, find semantically similar
-    questions from the dataset, persist the record, and return results.
-    """
+def ask_question(data: QuestionRequest, user_id: str = Depends(get_current_user)):
     if not data.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     try:
-        # ── Embed the question (model loaded lazily here on first call) ────────
         from services.model_loader import encode
         embedding = encode(data.question)
     except RuntimeError as exc:
@@ -106,10 +159,10 @@ def ask_question(data: QuestionRequest):
         logger.warning("/ask — topic classification failed (%s), using fallback.", exc)
         topic = "General Science"
 
-    similar_questions = find_similar(embedding)   # returns [] on error — never raises
+    similar_questions = find_similar(embedding)
 
-    # ── Persist to MongoDB ────────────────────────────────────────────────────
     document = {
+        "user_id":         user_id,
         "question":        data.question,
         "topic":           topic,
         "similarQuestions": similar_questions,
@@ -119,7 +172,6 @@ def ask_question(data: QuestionRequest):
         collection.insert_one(document)
     except Exception as exc:
         logger.error("/ask — MongoDB insert failed: %s", exc)
-        # Still return results even if persistence fails
 
     return {
         "topic":            topic,
@@ -128,10 +180,9 @@ def ask_question(data: QuestionRequest):
 
 
 @app.get("/history")
-def get_history():
-    """Return all past questions sorted newest-first."""
+def get_history(user_id: str = Depends(get_current_user)):
     try:
-        records = list(collection.find().sort("createdAt", -1))
+        records = list(collection.find({"user_id": user_id}).sort("createdAt", -1))
     except Exception as exc:
         logger.error("/history — DB query failed: %s", exc)
         raise HTTPException(status_code=503, detail="Database unavailable.")
@@ -155,10 +206,9 @@ def get_history():
 
 
 @app.get("/dashboard")
-def dashboard():
-    """Return aggregate learning statistics."""
+def dashboard(user_id: str = Depends(get_current_user)):
     try:
-        data = list(collection.find())
+        data = list(collection.find({"user_id": user_id}))
     except Exception as exc:
         logger.error("/dashboard — DB query failed: %s", exc)
         raise HTTPException(status_code=503, detail="Database unavailable.")
@@ -189,21 +239,25 @@ def dashboard():
     avg_score  = round(total_score / score_count, 2) if score_count else 0
     progress   = min(total_questions * 10, 100)
 
+    # Sort recent activity by date (newest first)
+    recent_activity.reverse()
+
     return {
         "totalQuestions": total_questions,
         "topicsLearned":  len(topics),
         "similarMatches": total_matches,
         "averageScore":   avg_score,
         "progress":       progress,
-        "recentActivity": recent_activity[-5:],
+        "recentActivity": recent_activity[:5],
     }
 
 
 @app.get("/profile")
-def profile():
-    """Return per-user stats with monthly activity and topic breakdown."""
+def profile(user_id: str = Depends(get_current_user)):
     try:
-        records = list(collection.find())
+        records = list(collection.find({"user_id": user_id}))
+        from bson.objectid import ObjectId
+        db_user = users_collection.find_one({"_id": ObjectId(user_id)})
     except Exception as exc:
         logger.error("/profile — DB query failed: %s", exc)
         raise HTTPException(status_code=503, detail="Database unavailable.")
@@ -233,10 +287,14 @@ def profile():
         running_total += monthly_counter.get(month, 0)
         monthly_data.append({"month": month, "questions": running_total})
 
+    name = db_user["name"] if db_user else "StudySync User"
+    email = db_user["email"] if db_user else "student@example.com"
+    joined_date = db_user["createdAt"].strftime("%Y") if db_user and "createdAt" in db_user else "2026"
+
     return {
-        "name":              "StudySync User",
-        "email":             "student@example.com",
-        "joined":            "2026",
+        "name":              name,
+        "email":             email,
+        "joined":            joined_date,
         "totalQuestions":    total_questions,
         "topics":            dict(topic_counter),
         "monthlyData":       monthly_data,
@@ -247,8 +305,7 @@ def profile():
 
 @app.get("/")
 def root():
-    """Health check endpoint."""
     return {
         "status":  "ok",
-        "message": "StudySync AI Backend Running",
+        "message": "StudySync AI Backend Running with JWT Auth",
     }
