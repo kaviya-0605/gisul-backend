@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # ── Service imports (no heavy work happens here — all lazy) ───────────────────
 print("STEP 2.1 - loading similarity service")
-from services.similarity import find_similar
+from services.similarity import find_similar, find_similar_from_history
 print("Similarity service initialized")
 
 print("STEP 2.2 - loading topic classifier")
@@ -177,12 +177,38 @@ def ask_question(data: QuestionRequest, user_id: str = Depends(get_current_user)
         logger.warning("/ask — topic classification failed (%s), using fallback.", exc)
         topic = "General Science"
 
-    similar_questions = find_similar(embedding)
+    # 1. Find similar from static dataset
+    dataset_matches = find_similar(embedding)
 
+    # 2. Find similar from ALL users' previously asked questions in MongoDB
+    user_history_matches = []
+    try:
+        history_docs = list(collection.find(
+            {"embedding": {"$exists": True}},
+            {"question": 1, "topic": 1, "embedding": 1, "_id": 0}
+        ))
+        user_history_matches = find_similar_from_history(
+            embedding, history_docs, data.question, top_k=5
+        )
+    except Exception as exc:
+        logger.warning("/ask — user history search failed: %s", exc)
+
+    # 3. Merge results: dataset matches first, then user history (deduplicated)
+    seen_questions = {m["question"].strip().lower() for m in dataset_matches}
+    for match in user_history_matches:
+        if match["question"].strip().lower() not in seen_questions:
+            seen_questions.add(match["question"].strip().lower())
+            dataset_matches.append(match)
+
+    # Sort all by score descending and take top 10
+    similar_questions = sorted(dataset_matches, key=lambda x: x["score"], reverse=True)[:10]
+
+    # 4. Store question WITH embedding in MongoDB for future cross-user matching
     document = {
         "user_id":         user_id,
         "question":        data.question,
         "topic":           topic,
+        "embedding":       embedding.tolist(),
         "similarQuestions": similar_questions,
         "createdAt":       datetime.utcnow(),
     }

@@ -110,3 +110,90 @@ def find_similar(question_embedding: np.ndarray, top_k: int = 5) -> list:
     except Exception as exc:
         logger.error("find_similar failed: %s", exc)
         return []   # safe fallback — API returns empty list instead of 500
+
+
+def find_similar_from_history(
+    question_embedding: np.ndarray,
+    history_docs: list,
+    current_question: str,
+    top_k: int = 5,
+) -> list:
+    """
+    Find similar questions from previously asked user questions stored in MongoDB.
+
+    Args:
+        question_embedding: 1-D numpy array of shape (384,).
+        history_docs: list of MongoDB documents with 'question', 'topic', 'embedding' fields.
+        current_question: the current question text (to skip exact self-matches).
+        top_k: number of results to return.
+
+    Returns:
+        List of dicts with keys: question, topic, score (0-100), source.
+        Returns [] on error.
+    """
+    try:
+        if not history_docs:
+            return []
+
+        # Filter docs that have embeddings and aren't the exact same question
+        valid_docs = []
+        valid_embeddings = []
+        for doc in history_docs:
+            emb = doc.get("embedding")
+            if emb is None:
+                continue
+            if doc.get("question", "").strip().lower() == current_question.strip().lower():
+                continue
+            valid_docs.append(doc)
+            valid_embeddings.append(emb)
+
+        if not valid_embeddings:
+            return []
+
+        # Stack into matrix and L2-normalise
+        emb_matrix = np.array(valid_embeddings, dtype=np.float32)
+        norms = np.linalg.norm(emb_matrix, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1e-9, norms)
+        emb_matrix = emb_matrix / norms
+
+        # Normalise query
+        q = question_embedding.astype(np.float32)
+        q_norm = np.linalg.norm(q)
+        if q_norm == 0:
+            q_norm = 1e-9
+        q = q / q_norm
+
+        # Cosine similarity via dot product
+        scores = np.dot(emb_matrix, q)
+        indices = np.argsort(scores)[::-1]
+
+        results = []
+        seen_questions = set()
+        for i in indices:
+            score = float(scores[i])
+
+            if score > 0.99:
+                continue
+            if score < 0.25:
+                break
+
+            q_text = valid_docs[i].get("question", "")
+            if q_text.lower() in seen_questions:
+                continue
+            seen_questions.add(q_text.lower())
+
+            results.append({
+                "question": q_text,
+                "topic":    valid_docs[i].get("topic", "Unknown"),
+                "score":    round(score * 100, 2),
+                "source":   "user_history",
+            })
+
+            if len(results) == top_k:
+                break
+
+        return results
+
+    except Exception as exc:
+        logger.error("find_similar_from_history failed: %s", exc)
+        return []
