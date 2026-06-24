@@ -2,7 +2,6 @@ fastapi
 uvicorn[standard]
 pydantic
 pymongo[srv]
-sentence-transformers
-scikit-learn
 numpy
 python-dotenv
+requests

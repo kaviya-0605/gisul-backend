@@ -1,9 +1,13 @@
 import json
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
 
 # Load embeddings
 embeddings = np.load("data/embeddings.npy")
+
+# Precompute norms of backend embeddings for speed
+embeddings_norm = np.linalg.norm(embeddings, axis=1, keepdims=True)
+embeddings_norm = np.where(embeddings_norm == 0, 1e-9, embeddings_norm)
+normalized_embeddings = embeddings / embeddings_norm
 
 # Load questions
 with open(
@@ -15,11 +19,13 @@ with open(
 
 
 def find_similar(question_embedding, top_k=5):
+    # Compute cosine similarity using pure numpy
+    q_norm = np.linalg.norm(question_embedding)
+    q_norm = 1e-9 if q_norm == 0 else q_norm
+    normalized_q = question_embedding / q_norm
 
-    scores = cosine_similarity(
-        [question_embedding],
-        embeddings
-    )[0]
+    # Dot product of normalized vectors yields cosine similarity
+    scores = np.dot(normalized_embeddings, normalized_q)
 
     # Sort by similarity score descending
     indices = np.argsort(scores)[::-1]

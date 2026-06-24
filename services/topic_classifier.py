@@ -89,7 +89,6 @@
 
 
 from services.model_loader import model
-from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 TOPICS = {
@@ -118,13 +117,18 @@ topic_embeddings = model.encode(
     list(TOPICS.values())
 )
 
+# Precompute norms for topic embeddings
+topic_norms = np.linalg.norm(topic_embeddings, axis=1, keepdims=True)
+topic_norms = np.where(topic_norms == 0, 1e-9, topic_norms)
+normalized_topics = topic_embeddings / topic_norms
+
 def get_topic(question):
+    q_embedding = model.encode(question)  # encode returns shape (384,)
+    
+    q_norm = np.linalg.norm(q_embedding)
+    q_norm = 1e-9 if q_norm == 0 else q_norm
+    normalized_q = q_embedding / q_norm
 
-    q_embedding = model.encode([question])
-
-    scores = cosine_similarity(
-        q_embedding,
-        topic_embeddings
-    )[0]
+    scores = np.dot(normalized_topics, normalized_q)
 
     return topic_names[np.argmax(scores)]
