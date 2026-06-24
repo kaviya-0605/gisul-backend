@@ -1,345 +1,58 @@
-
-
-
-# from fastapi import FastAPI
-# from pydantic import BaseModel
-# from fastapi.middleware.cors import CORSMiddleware
-
-# from sentence_transformers import SentenceTransformer
-
-# from services.similarity import find_similar
-# from services.topic_classifier import get_topic
-
-# from database.mongodb import search_collection
-
-# from datetime import datetime
-
-
-# app = FastAPI()
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# model = SentenceTransformer(
-#     "all-MiniLM-L6-v2"
-# )
-
-
-# class QuestionRequest(BaseModel):
-#     question: str
-
-
-# @app.post("/ask")
-# def ask_question(data: QuestionRequest):
-
-#     embedding = model.encode(
-#         data.question
-#     )
-
-#     topic = get_topic(
-#         data.question
-#     )
-
-#     similar_questions = find_similar(
-#         embedding
-#     )
-
-#     document = {
-#         "question": data.question,
-#         "topic": topic,
-#         "similarQuestions": similar_questions,
-#         "createdAt": datetime.utcnow()
-#     }
-
-#     search_collection.insert_one(
-#         document
-#     )
-
-#     return {
-#         "topic": topic,
-#         "similarQuestions": similar_questions
-#     }
-
-
-# @app.get("/history")
-# def get_history():
-
-#     records = list(
-#         search_collection.find(
-#             {},
-#             {"_id": 0}
-#         ).sort("createdAt", -1)
-#     )
-
-#     return records
-
-
-# @app.get("/stats")
-# def get_stats():
-
-#     total_questions = search_collection.count_documents({})
-
-#     records = list(
-#         search_collection.find(
-#             {},
-#             {"_id": 0}
-#         )
-#     )
-
-#     topic_counts = {}
-
-#     for item in records:
-
-#         topic = item.get(
-#             "topic",
-#             "Unknown"
-#         )
-
-#         topic_counts[topic] = (
-#             topic_counts.get(topic, 0)
-#             + 1
-#         )
-
-#     return {
-#         "totalQuestions": total_questions,
-#         "topics": topic_counts
-#     }
-
-
-
-
-
-
-
-# from fastapi import FastAPI
-# from fastapi.middleware.cors import CORSMiddleware
-# from pydantic import BaseModel
-# from datetime import datetime
-# from collections import Counter
-
-# from sentence_transformers import SentenceTransformer
-
-# from services.similarity import find_similar
-# from services.topic_classifier import get_topic
-
-# from database.mongodb import collection
-
-# app = FastAPI()
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=[
-#         "http://localhost:5173",
-#         "http://127.0.0.1:5173"
-#     ],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # =====================================================
-# # LOAD MODEL ONCE
-# # =====================================================
-
-# model = SentenceTransformer(
-#     "all-MiniLM-L6-v2"
-# )
-
-# # =====================================================
-# # REQUEST MODEL
-# # =====================================================
-
-# class QuestionRequest(BaseModel):
-#     question: str
-
-# # =====================================================
-# # ASK QUESTION API
-# # =====================================================
-
-# @app.post("/ask")
-# def ask_question(data: QuestionRequest):
-
-#     embedding = model.encode(
-#         data.question
-#     )
-
-#     topic = get_topic(
-#         data.question
-#     )
-
-#     similar_questions = find_similar(
-#         embedding
-#     )
-
-#     document = {
-#         "question": data.question,
-#         "topic": topic,
-#         "similarQuestions": similar_questions,
-#         "createdAt": datetime.utcnow()
-#     }
-
-#     collection.insert_one(
-#         document
-#     )
-
-#     return {
-#         "topic": topic,
-#         "similarQuestions": similar_questions
-#     }
-
-# # =====================================================
-# # HISTORY API
-# # =====================================================
-
-# @app.get("/history")
-# def get_history():
-
-#     questions = list(
-#         collection.find().sort(
-#             "createdAt",
-#             -1
-#         )
-#     )
-
-#     results = []
-
-#     for item in questions:
-
-#         results.append({
-#             "id": str(item["_id"]),
-#             "question": item["question"],
-#             "topic": item["topic"],
-#             "date": item["createdAt"].strftime(
-#                 "%d-%m-%Y"
-#             ),
-#             "score":
-#             item["similarQuestions"][0]["score"]
-#             if len(item["similarQuestions"]) > 0
-#             else 0
-#         })
-
-#     return results
-
-# # =====================================================
-# # DASHBOARD API
-# # =====================================================
-
-# @app.get("/dashboard")
-# def dashboard():
-
-#     data = list(
-#         collection.find()
-#     )
-
-#     total_questions = len(data)
-
-#     topics = set()
-
-#     total_matches = 0
-
-#     for item in data:
-
-#         topics.add(
-#             item["topic"]
-#         )
-
-#         total_matches += len(
-#             item["similarQuestions"]
-#         )
-
-#     progress = min(
-#         total_questions * 2,
-#         100
-#     )
-
-#     return {
-#         "totalQuestions":
-#         total_questions,
-
-#         "topicsLearned":
-#         len(topics),
-
-#         "similarMatches":
-#         total_matches,
-
-#         "progress":
-#         progress
-#     }
-
-# # =====================================================
-# # PROFILE API
-# # =====================================================
-
-# @app.get("/profile")
-# def profile():
-
-#     data = list(
-#         collection.find()
-#     )
-
-#     topic_counter = Counter()
-
-#     for item in data:
-
-#         topic_counter[
-#             item["topic"]
-#         ] += 1
-
-#     return {
-#         "totalQuestions":
-#         len(data),
-
-#         "topics":
-#         dict(topic_counter)
-#     }
-
-# # =====================================================
-# # ROOT
-# # =====================================================
-
-# @app.get("/")
-# def root():
-#     return {
-#         "message":
-#         "StudySync AI Backend Running"
-#     }
-
-
-
-
-
-
-
-
+"""
+StudySync AI — FastAPI Backend
+================================
+Endpoints:
+  POST /ask          — find semantically similar questions
+  GET  /history      — all past questions (newest first)
+  GET  /dashboard    — aggregate stats
+  GET  /profile      — per-user stats + monthly activity
+  GET  /             — health check
+
+Design decisions:
+  • Model is loaded LAZILY on the first /ask request — FastAPI starts
+    in < 1 second regardless of model size.
+  • All ML operations are wrapped in try/except — the API never crashes
+    due to embedding failures; it returns a 500 with a clear message.
+  • MongoDB _id (ObjectId) is serialised to str for JSON compatibility.
+"""
+
+import logging
 import os
-from dotenv import load_dotenv
-load_dotenv()
+from collections import Counter, defaultdict
+from datetime import datetime
 
-from fastapi import FastAPI
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from datetime import datetime
-from collections import Counter, defaultdict
+load_dotenv()
 
-from services.model_loader import model
+# ── Logging ────────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ── Service imports (no heavy work happens here — all lazy) ───────────────────
 from services.similarity import find_similar
 from services.topic_classifier import get_topic
 from database.mongodb import collection
 
-app = FastAPI()
+# ── FastAPI app ────────────────────────────────────────────────────────────────
+app = FastAPI(
+    title="StudySync AI",
+    description="Semantic question similarity search backend",
+    version="1.0.0",
+)
 
-# =====================================================
-# CORS
-# =====================================================
-
+# ── CORS ───────────────────────────────────────────────────────────────────────
+# Set ALLOWED_ORIGINS in your .env / Render environment variables as a
+# comma-separated list:  https://gisul-frontend-eight.vercel.app,http://localhost:5173
 _raw_origins = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173"
+    "http://localhost:5173,http://127.0.0.1:5173",
 )
 origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
@@ -351,262 +64,191 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =====================================================
-# REQUEST MODEL
-# =====================================================
+logger.info("CORS origins: %s", origins)
 
+
+# ── Request schema ─────────────────────────────────────────────────────────────
 class QuestionRequest(BaseModel):
     question: str
 
-# =====================================================
-# ASK QUESTION
-# =====================================================
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def _safe_score(item: dict) -> float:
+    """Return the best similarity score from a history record, or 0."""
+    qs = item.get("similarQuestions", [])
+    return qs[0]["score"] if qs else 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/ask")
 def ask_question(data: QuestionRequest):
+    """
+    Accept a study question, classify its topic, find semantically similar
+    questions from the dataset, persist the record, and return results.
+    """
+    if not data.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    embedding = model.encode(
-        data.question
-    )
+    try:
+        # ── Embed the question (model loaded lazily here on first call) ────────
+        from services.model_loader import encode
+        embedding = encode(data.question)
+    except RuntimeError as exc:
+        logger.error("/ask — model encode failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Embedding model unavailable. Try again shortly.")
 
-    topic = get_topic(
-        data.question
-    )
+    try:
+        topic = get_topic(data.question)
+    except Exception as exc:
+        logger.warning("/ask — topic classification failed (%s), using fallback.", exc)
+        topic = "General Science"
 
-    similar_questions = find_similar(
-        embedding
-    )
+    similar_questions = find_similar(embedding)   # returns [] on error — never raises
 
+    # ── Persist to MongoDB ────────────────────────────────────────────────────
     document = {
-        "question": data.question,
-        "topic": topic,
+        "question":        data.question,
+        "topic":           topic,
         "similarQuestions": similar_questions,
-        "createdAt": datetime.utcnow()
+        "createdAt":       datetime.utcnow(),
     }
-
-    collection.insert_one(
-        document
-    )
+    try:
+        collection.insert_one(document)
+    except Exception as exc:
+        logger.error("/ask — MongoDB insert failed: %s", exc)
+        # Still return results even if persistence fails
 
     return {
-        "topic": topic,
-        "similarQuestions": similar_questions
+        "topic":            topic,
+        "similarQuestions": similar_questions,
     }
 
-# =====================================================
-# HISTORY
-# =====================================================
 
 @app.get("/history")
 def get_history():
-
-    questions = list(
-        collection.find().sort(
-            "createdAt",
-            -1
-        )
-    )
+    """Return all past questions sorted newest-first."""
+    try:
+        records = list(collection.find().sort("createdAt", -1))
+    except Exception as exc:
+        logger.error("/history — DB query failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Database unavailable.")
 
     results = []
-
-    for item in questions:
-
-        score = 0
-
-        if len(item["similarQuestions"]) > 0:
-            score = item["similarQuestions"][0]["score"]
-
-        results.append({
-            "id": str(item["_id"]),
-            "question": item["question"],
-            "topic": item["topic"],
-            "date": item["createdAt"].strftime(
-                "%d-%m-%Y"
-            ),
-            "score": round(score)
-        })
+    for item in records:
+        try:
+            results.append({
+                "id":       str(item["_id"]),
+                "question": item["question"],
+                "topic":    item.get("topic", "Unknown"),
+                "date":     item["createdAt"].strftime("%d-%m-%Y"),
+                "score":    round(_safe_score(item)),
+                "similarQuestions": item.get("similarQuestions", []),
+                "createdAt": item["createdAt"].isoformat(),
+            })
+        except Exception as exc:
+            logger.warning("Skipping malformed history record: %s", exc)
 
     return results
 
-# =====================================================
-# DASHBOARD
-# =====================================================
 
 @app.get("/dashboard")
 def dashboard():
-
-    data = list(
-        collection.find()
-    )
+    """Return aggregate learning statistics."""
+    try:
+        data = list(collection.find())
+    except Exception as exc:
+        logger.error("/dashboard — DB query failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Database unavailable.")
 
     total_questions = len(data)
-
-    topics = set()
-
+    topics: set = set()
     total_matches = 0
-
-    total_score = 0
+    total_score = 0.0
     score_count = 0
-
     recent_activity = []
 
     for item in data:
+        topics.add(item.get("topic", "Unknown"))
+        qs = item.get("similarQuestions", [])
+        total_matches += len(qs)
 
-        topics.add(
-            item["topic"]
-        )
-
-        total_matches += len(
-            item["similarQuestions"]
-        )
-
-        if len(item["similarQuestions"]) > 0:
-
-            score = item["similarQuestions"][0]["score"]
-
-            total_score += score
+        if qs:
+            total_score += qs[0]["score"]
             score_count += 1
 
         recent_activity.append({
             "question": item["question"],
-            "topic": item["topic"],
-            "date": item["createdAt"].strftime("%d-%m-%Y"),
-            "score": round(
-                item["similarQuestions"][0]["score"]
-            ) if len(item["similarQuestions"]) > 0 else 0
+            "topic":    item.get("topic", "Unknown"),
+            "date":     item["createdAt"].strftime("%d-%m-%Y"),
+            "score":    round(qs[0]["score"]) if qs else 0,
         })
 
-    avg_score = (
-        total_score / score_count
-        if score_count > 0
-        else 0
-    )
-
-    progress = min(
-        total_questions * 10,
-        100
-    )
+    avg_score  = round(total_score / score_count, 2) if score_count else 0
+    progress   = min(total_questions * 10, 100)
 
     return {
         "totalQuestions": total_questions,
-        "topicsLearned": len(topics),
+        "topicsLearned":  len(topics),
         "similarMatches": total_matches,
-        "averageScore": round(avg_score, 2),
-        "progress": progress,
-        "recentActivity": recent_activity[-5:]
+        "averageScore":   avg_score,
+        "progress":       progress,
+        "recentActivity": recent_activity[-5:],
     }
 
-# =====================================================
-# PROFILE
-# =====================================================
 
 @app.get("/profile")
 def profile():
-
-    records = list(
-        collection.find()
-    )
+    """Return per-user stats with monthly activity and topic breakdown."""
+    try:
+        records = list(collection.find())
+    except Exception as exc:
+        logger.error("/profile — DB query failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Database unavailable.")
 
     total_questions = len(records)
-
-    topic_counter = Counter()
-
-    monthly_counter = defaultdict(int)
-
-    total_score = 0
+    topic_counter: Counter  = Counter()
+    monthly_counter: defaultdict = defaultdict(int)
+    total_score = 0.0
     score_count = 0
 
     for item in records:
+        topic_counter[item.get("topic", "Unknown")] += 1
+        monthly_counter[item["createdAt"].strftime("%b")] += 1
 
-        topic_counter[
-            item["topic"]
-        ] += 1
-
-        month = item["createdAt"].strftime(
-            "%b"
-        )
-
-        monthly_counter[
-            month
-        ] += 1
-
-        if len(item["similarQuestions"]) > 0:
-
-            total_score += item[
-                "similarQuestions"
-            ][0]["score"]
-
+        qs = item.get("similarQuestions", [])
+        if qs:
+            total_score += qs[0]["score"]
             score_count += 1
 
-    average_similarity = (
-        total_score / score_count
-        if score_count > 0
-        else 0
-    )
+    average_similarity = round(total_score / score_count, 2) if score_count else 0
 
-    monthly_data = []
-
+    month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     running_total = 0
-
-    month_order = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec"
-    ]
-
+    monthly_data  = []
     for month in month_order:
-
-        running_total += monthly_counter.get(
-            month,
-            0
-        )
-
-        monthly_data.append({
-            "month": month,
-            "questions": running_total
-        })
+        running_total += monthly_counter.get(month, 0)
+        monthly_data.append({"month": month, "questions": running_total})
 
     return {
-        "name": "StudySync User",
-        "email": "student@example.com",
-        "joined": "2026",
-
-        "totalQuestions": total_questions,
-
-        "topics": dict(
-            topic_counter
-        ),
-
-        "monthlyData": monthly_data,
-
-        "averageSimilarity": round(
-            average_similarity,
-            2
-        ),
-
-        "learningProgress": min(
-            total_questions * 10,
-            100
-        )
+        "name":              "StudySync User",
+        "email":             "student@example.com",
+        "joined":            "2026",
+        "totalQuestions":    total_questions,
+        "topics":            dict(topic_counter),
+        "monthlyData":       monthly_data,
+        "averageSimilarity": average_similarity,
+        "learningProgress":  min(total_questions * 10, 100),
     }
 
-# =====================================================
-# ROOT
-# =====================================================
 
 @app.get("/")
 def root():
-
+    """Health check endpoint."""
     return {
-        "message":
-        "StudySync AI Backend Running"
+        "status":  "ok",
+        "message": "StudySync AI Backend Running",
     }

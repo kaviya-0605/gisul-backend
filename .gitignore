@@ -28,3 +28,6 @@ node_modules/
 # Large data / model cache
 # data/embeddings.npy is included for seamless deployment
 
+# ONNX model cache — downloaded at build time via build.sh, not committed to git
+models/
+

@@ -1,47 +1,88 @@
-import os
-import time
-import requests
+"""
+Model Loader — Lazy Singleton Pattern
+======================================
+Loads SentenceTransformer("all-MiniLM-L6-v2") locally on first use.
+- Zero computation at import time → FastAPI starts instantly.
+- Model cached after first load → subsequent requests are fast.
+- Thread-safe via module-level lock.
+"""
+
+import logging
+import threading
+from typing import Optional
+
 import numpy as np
-from dotenv import load_dotenv
 
-load_dotenv()
+logger = logging.getLogger(__name__)
 
-class HFInferenceModel:
-    def __init__(self):
-        self.api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
-        self.token = os.getenv("HF_TOKEN")
-        self.headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
+_model = None
+_lock = threading.Lock()
 
-    def encode(self, sentences, **kwargs):
-        is_single = isinstance(sentences, str)
-        inputs = [sentences] if is_single else sentences
-        
-        # Try Hugging Face Inference API with 3 retries (to handle model cold start)
-        for attempt in range(3):
-            try:
-                response = requests.post(
-                    self.api_url, 
-                    headers=self.headers, 
-                    json={"inputs": inputs, "options": {"wait_for_model": True}},
-                    timeout=15
-                )
-                if response.status_code == 200:
-                    res_data = response.json()
-                    # Return as numpy array matching SentenceTransformer behavior
-                    return np.array(res_data[0] if is_single else res_data, dtype=np.float32)
-                elif response.status_code == 503:
-                    # Model loading on Hugging Face, wait and retry
-                    time.sleep(4)
-                    continue
-                else:
-                    raise Exception(f"Hugging Face API returned status {response.status_code}: {response.text}")
-            except Exception as e:
-                if attempt == 2:
-                    raise e
-                time.sleep(2)
-        
-        raise Exception("Failed to fetch embeddings from Hugging Face Inference API")
 
-print("Initializing API-based SentenceTransformer...")
-model = HFInferenceModel()
-print("API Model Ready")
+def get_model():
+    """
+    Return the cached SentenceTransformer model, loading it on first call.
+    Raises RuntimeError if the model cannot be loaded.
+    """
+    global _model
+
+    if _model is not None:
+        return _model
+
+    with _lock:
+        # Double-checked locking: another thread may have loaded it while we waited
+        if _model is not None:
+            return _model
+
+        try:
+            import os
+            # Reduce PyTorch thread overhead — important on memory-constrained hosts
+            os.environ.setdefault("OMP_NUM_THREADS", "1")
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+            import torch
+            torch.set_num_threads(1)
+
+            from sentence_transformers import SentenceTransformer
+
+            logger.info("Loading SentenceTransformer model (all-MiniLM-L6-v2)...")
+            _model = SentenceTransformer("all-MiniLM-L6-v2")
+            logger.info("Model loaded successfully.")
+        except Exception as exc:
+            logger.error("Failed to load SentenceTransformer model: %s", exc)
+            raise RuntimeError(f"Model loading failed: {exc}") from exc
+
+    return _model
+
+
+def encode(text: str | list) -> np.ndarray:
+    """
+    Encode one or more sentences into L2-normalised embeddings.
+
+    Args:
+        text: A single string or a list of strings.
+
+    Returns:
+        numpy array of shape (384,) for a single string,
+        or (N, 384) for a list.
+
+    Raises:
+        RuntimeError: if the model cannot be loaded or encoding fails.
+    """
+    try:
+        model = get_model()
+        is_single = isinstance(text, str)
+        inputs = [text] if is_single else text
+
+        embeddings = model.encode(inputs, convert_to_numpy=True)
+
+        # L2-normalise
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1e-9, norms)
+        embeddings = embeddings / norms
+
+        return embeddings[0] if is_single else embeddings
+
+    except Exception as exc:
+        logger.error("Encoding failed: %s", exc)
+        raise RuntimeError(f"Encoding failed: {exc}") from exc

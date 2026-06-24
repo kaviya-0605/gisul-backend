@@ -1,134 +1,88 @@
-# from sentence_transformers import SentenceTransformer
-# from sklearn.metrics.pairwise import cosine_similarity
-# import numpy as np
+"""
+Topic Classifier
+================
+Classifies a question into one of six predefined academic topics using
+semantic similarity between the question and topic descriptor phrases.
 
-# model = SentenceTransformer(
-#     "all-MiniLM-L6-v2"
-# )
+- Topic embeddings are computed lazily on first call (not at import time).
+- Safe fallback ("General Science") returned if classification fails.
+- Uses the shared model from model_loader — model is loaded only once.
+"""
 
-# topics = [
-#     "Biology",
-#     "Physics",
-#     "Chemistry",
-#     "Math",
-#     "Computer Science",
-#     "General Science"
-# ]
+import logging
+from typing import Optional
 
-# topic_embeddings = model.encode(topics)
-
-
-# def get_topic(question):
-
-#     q_embedding = model.encode([question])
-
-#     scores = cosine_similarity(
-#         q_embedding,
-#         topic_embeddings
-#     )[0]
-
-#     return topics[np.argmax(scores)]
-
-
-
-
-
-
-
-
-
-# from sentence_transformers import SentenceTransformer
-# from sklearn.metrics.pairwise import cosine_similarity
-# import numpy as np
-
-# model = SentenceTransformer(
-#     "all-MiniLM-L6-v2"
-# )
-
-# TOPICS = {
-#     "Biology":
-#         "photosynthesis cell dna plant organism gene enzyme protein",
-
-#     "Physics":
-#         "force gravity motion velocity acceleration energy",
-
-#     "Chemistry":
-#         "acid base reaction molecule element chemical",
-
-#     "Math":
-#         "equation algebra geometry triangle calculus",
-
-#     "Computer Science":
-#         "computer programming algorithm database software",
-
-#     "General Science":
-#         "science experiment observation research"
-# }
-
-# topic_names = list(TOPICS.keys())
-
-# topic_embeddings = model.encode(
-#     list(TOPICS.values())
-# )
-
-
-# def get_topic(question):
-
-#     q_embedding = model.encode([question])
-
-#     scores = cosine_similarity(
-#         q_embedding,
-#         topic_embeddings
-#     )[0]
-
-#     return topic_names[np.argmax(scores)]
-
-
-
-
-
-
-from services.model_loader import model
 import numpy as np
 
-TOPICS = {
+from services.model_loader import encode
+
+logger = logging.getLogger(__name__)
+
+# ── Topic descriptor vocabulary ───────────────────────────────────────────────
+TOPICS: dict[str, str] = {
     "Biology":
-        "photosynthesis dna cell plant gene organism enzyme",
-
+        "photosynthesis dna cell plant gene organism enzyme protein",
     "Physics":
-        "force gravity motion energy velocity acceleration",
-
+        "force gravity motion energy velocity acceleration wave",
     "Chemistry":
-        "acid base molecule reaction element compound",
-
+        "acid base molecule reaction element compound periodic",
     "Math":
-        "algebra geometry equation calculus probability",
-
+        "algebra geometry equation calculus probability trigonometry",
     "Computer Science":
-        "react node mongodb express javascript python java api backend frontend full stack database programming software algorithm",
-
+        "react node mongodb express javascript python java api backend "
+        "frontend database programming software algorithm data structure",
     "General Science":
-        "science experiment observation research"
+        "science experiment observation hypothesis research",
 }
 
-topic_names = list(TOPICS.keys())
+TOPIC_NAMES: list[str] = list(TOPICS.keys())
+FALLBACK_TOPIC: str = "General Science"
 
-topic_embeddings = model.encode(
-    list(TOPICS.values())
-)
+# ── Cache ─────────────────────────────────────────────────────────────────────
+_topic_embeddings: Optional[np.ndarray] = None  # shape (6, 384) — L2-normalised
 
-# Precompute norms for topic embeddings
-topic_norms = np.linalg.norm(topic_embeddings, axis=1, keepdims=True)
-topic_norms = np.where(topic_norms == 0, 1e-9, topic_norms)
-normalized_topics = topic_embeddings / topic_norms
 
-def get_topic(question):
-    q_embedding = model.encode(question)  # encode returns shape (384,)
-    
-    q_norm = np.linalg.norm(q_embedding)
-    q_norm = 1e-9 if q_norm == 0 else q_norm
-    normalized_q = q_embedding / q_norm
+def _get_topic_embeddings() -> np.ndarray:
+    """
+    Return cached, L2-normalised topic embeddings.
+    Computed on first call; cached for all subsequent calls.
+    """
+    global _topic_embeddings
 
-    scores = np.dot(normalized_topics, normalized_q)
+    if _topic_embeddings is not None:
+        return _topic_embeddings
 
-    return topic_names[np.argmax(scores)]
+    try:
+        descriptors = list(TOPICS.values())
+        _topic_embeddings = encode(descriptors)   # shape (6, 384), already L2-normalised
+        logger.info("Topic embeddings computed for %d topics.", len(TOPIC_NAMES))
+    except Exception as exc:
+        logger.error("Failed to compute topic embeddings: %s", exc)
+        raise
+
+    return _topic_embeddings
+
+
+def get_topic(question: str) -> str:
+    """
+    Classify *question* into one of the predefined academic topics.
+
+    Returns:
+        Topic name string (e.g. "Biology", "Physics").
+        Falls back to FALLBACK_TOPIC on any error.
+    """
+    try:
+        topic_embeddings = _get_topic_embeddings()
+
+        # encode() returns L2-normalised embedding
+        q_emb = encode(question)   # shape (384,)
+
+        # Cosine similarity = dot product (both sides are L2-normalised)
+        scores = np.dot(topic_embeddings, q_emb)
+
+        best_idx = int(np.argmax(scores))
+        return TOPIC_NAMES[best_idx]
+
+    except Exception as exc:
+        logger.error("get_topic failed for %r: %s", question, exc)
+        return FALLBACK_TOPIC   # safe fallback — never crashes the API
