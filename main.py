@@ -249,6 +249,30 @@ def get_history(user_id: str = Depends(get_current_user)):
     return results
 
 
+@app.delete("/history/{item_id}")
+def delete_history_item(item_id: str, user_id: str = Depends(get_current_user)):
+    try:
+        from bson.objectid import ObjectId
+        from bson.errors import InvalidId
+        try:
+            obj_id = ObjectId(item_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid item ID format")
+            
+        result = collection.delete_one({"_id": obj_id, "user_id": user_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Item not found or unauthorized")
+            
+        return {"success": True, "message": "Item deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("/history/{item_id} — DB delete failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Database unavailable.")
+
+
 @app.get("/dashboard")
 def dashboard(user_id: str = Depends(get_current_user)):
     try:
