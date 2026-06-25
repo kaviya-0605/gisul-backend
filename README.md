@@ -1,6 +1,39 @@
 # Gisul Backend
+StudySync AI Backend is developed using FastAPI and provides REST APIs for AI-powered semantic question search, topic classification, user-specific history management, and learning analytics. The backend leverages Sentence Transformers to generate vector embeddings, enabling semantic similarity search instead of traditional keyword matching. User data and search history are securely stored in MongoDB Atlas, with access controlled through JWT authentication.
 
-FastAPI + Python backend for **StudySync AI** — semantic question similarity search using sentence embeddings and MongoDB.
+###AI Workflow
+
+The backend follows the workflow below:
+User submits a study question.
+FastAPI receives the request.
+Sentence Transformer converts the question into a vector embedding.
+Topic classifier predicts the subject.
+Cosine similarity is computed with the stored question embeddings.
+Top similar questions are retrieved.
+Search history is stored in MongoDB.
+Results are returned to the frontend.
+
+Each search is linked to the authenticated user's account.so each search is stored to particular use account.it ensure data privacy,user personalization.
+
+Semantic Search
+StudySync AI uses Sentence Transformers to perform semantic similarity search.
+
+Model used:
+all-MiniLM-L6-v2
+
+Advantages:
+Understands sentence meaning
+Handles paraphrased questions
+Better than keyword matching
+Fast inference
+Lightweight transformer model
+
+Dataset
+The backend uses a hybrid dataset consisting of:
+
+SciQ Dataset
+OpenBookQA Dataset
+Custom Computer Science Dataset
 
 ## Tech Stack
 
