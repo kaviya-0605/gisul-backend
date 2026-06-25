@@ -21,18 +21,17 @@ logger = logging.getLogger(__name__)
 # ── Topic descriptor vocabulary ───────────────────────────────────────────────
 TOPICS: dict[str, str] = {
     "Biology":
-        "photosynthesis dna cell plant gene organism enzyme protein",
+        "photosynthesis dna cell plant gene organism enzyme protein heart brain anatomy body human animal ecosystem evolution virus bacteria medicine",
     "Physics":
-        "force gravity motion energy velocity acceleration wave",
+        "force gravity motion energy velocity acceleration wave relativity quantum thermodynamics light electricity magnetism space universe",
     "Chemistry":
-        "acid base molecule reaction element compound periodic",
+        "acid base molecule reaction element compound periodic bond ion atom matter gas liquid solid polymer chemical",
     "Math":
-        "algebra geometry equation calculus probability trigonometry",
+        "algebra geometry equation calculus probability trigonometry statistics formula numbers matrix theorem",
     "Computer Science":
-        "react node mongodb express javascript python java api backend "
-        "frontend database programming software algorithm data structure",
+        "react node mongodb express javascript python java api backend frontend database programming software algorithm data structure network ai machine learning",
     "General Science":
-        "science experiment observation hypothesis research",
+        "science experiment observation hypothesis research theory facts lab conclusion",
 }
 
 TOPIC_NAMES: list[str] = list(TOPICS.keys())
